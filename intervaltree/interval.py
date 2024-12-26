@@ -23,17 +23,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 from numbers import Number
-from collections import namedtuple
+from typing import Generic, NamedTuple, Protocol, Tuple, TypeVar
+
+_A = TypeVar('_A')  # For data payload
+_C = TypeVar('_C', bound='Comparable')  # For comparable type (begin/end)
+
+
+class Comparable(Protocol):
+    def __lt__(self: _C, other: _C) -> bool: ...
+    def __gt__(self: _C, other: _C) -> bool: ...
+    def __eq__(self: _C, other: object) -> bool: ...
+
+
+class IntervalBase(Generic[_C, _A], NamedTuple):
+    begin: _C
+    end: _C
+    data: _A
 
 
 # noinspection PyBroadException
-class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
+class Interval(IntervalBase[_C, _A]):
     __slots__ = ()  # Saves memory, avoiding the need to create __dict__ for each interval
 
-    def __new__(cls, begin, end, data=None):
+    def __new__(cls, begin: _C, end: _C, data: _A | None = None):
         return super(Interval, cls).__new__(cls, begin, end, data)
     
-    def overlaps(self, begin, end=None):
+    def overlaps(self, begin: _C, end: _C | None = None) -> bool:
         """
         Whether the interval overlaps the given point, range or Interval.
         :param begin: beginning point of the range, or the point, or an Interval
@@ -53,30 +68,28 @@ class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
         except:
             return self.contains_point(begin)
 
-    def overlap_size(self, begin, end=None):
+    def overlap_size(self, begin: _C, end: _C | None = None) -> _C:
         """
         Return the overlap size between two intervals or a point
         :param begin: beginning point of the range, or the point, or an Interval
         :param end: end point of the range. Optional if not testing ranges.
         :return: Return the overlap size, None if not overlap is found
-        :rtype: depends on the given input (e.g., int will be returned for int interval and timedelta for
-        datetime intervals)
+        :rtype: Comparable
         """
         overlaps = self.overlaps(begin, end)
         if not overlaps:
-            return 0
+            return 0  # type: ignore
 
         if end is not None:
             # case end is given
             i0 = max(self.begin, begin)
             i1 = min(self.end, end)
-            return i1 - i0
-        # assume the type is interval, in other cases, an exception will be thrown
+            return i1 - i0  # type: ignore
         i0 = max(self.begin, begin.begin)
         i1 = min(self.end, begin.end)
-        return i1 - i0
+        return i1 - i0  # type: ignore
 
-    def contains_point(self, p):
+    def contains_point(self, p: _C) -> bool:
         """
         Whether the Interval contains p.
         :param p: a point
@@ -85,7 +98,7 @@ class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
         """
         return self.begin <= p < self.end
     
-    def range_matches(self, other):
+    def range_matches(self, other: 'Interval[_C, _A]') -> bool:
         """
         Whether the begins equal and the ends equal. Compare __eq__().
         :param other: Interval
@@ -97,7 +110,7 @@ class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
             self.end == other.end
         )
     
-    def contains_interval(self, other):
+    def contains_interval(self, other: 'Interval[_C, _A]') -> bool:
         """
         Whether other is contained in this Interval.
         :param other: Interval
@@ -109,28 +122,28 @@ class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
             self.end >= other.end
         )
     
-    def distance_to(self, other):
+    def distance_to(self, other: 'Interval[_C, _A]') -> _C:
         """
         Returns the size of the gap between intervals, or 0 
         if they touch or overlap.
         :param other: Interval or point
         :return: distance
-        :rtype: Number
+        :rtype: Comparable
         """
         if self.overlaps(other):
-            return 0
+            return 0  # type: ignore
         try:
             if self.begin < other.begin:
-                return other.begin - self.end
+                return other.begin - self.end  # type: ignore
             else:
-                return self.begin - other.end
+                return self.begin - other.end  # type: ignore
         except:
             if self.end <= other:
-                return other - self.end
+                return other - self.end  # type: ignore
             else:
-                return self.begin - other
+                return self.begin - other  # type: ignore
 
-    def is_null(self):
+    def is_null(self) -> bool:
         """
         Whether this equals the null interval.
         :return: True if end <= begin else False
@@ -138,17 +151,17 @@ class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
         """
         return self.begin >= self.end
 
-    def length(self):
+    def length(self) -> _C:
         """
         The distance covered by this Interval.
         :return: length
-        :type: Number
+        :type: Comparable
         """
         if self.is_null():
-            return 0
-        return self.end - self.begin
+            return 0  # type: ignore
+        return self.end - self.begin  # type: ignore
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         """
         Depends on begin and end only.
         :return: hash
@@ -156,7 +169,7 @@ class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
         """
         return hash((self.begin, self.end))
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         """
         Whether the begins equal, the ends equal, and the data fields
         equal. Compare range_matches().
@@ -164,13 +177,15 @@ class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
         :return: True or False
         :rtype: bool
         """
+        if not isinstance(other, Interval):
+            return NotImplemented
         return (
             self.begin == other.begin and
             self.end == other.end and
             self.data == other.data
         )
 
-    def __cmp__(self, other):
+    def __cmp__(self, other: 'Interval[_C, _A]') -> int:
         """
         Tells whether other sorts before, after or equal to this
         Interval.
@@ -201,7 +216,7 @@ class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
                 return 0
             return -1 if s < o else 1
 
-    def __lt__(self, other):
+    def __lt__(self, other: object) -> bool:
         """
         Less than operator. Parrots __cmp__()
         :param other: Interval or point
@@ -210,7 +225,7 @@ class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
         """
         return self.__cmp__(other) < 0
 
-    def __gt__(self, other):
+    def __gt__(self, other: object) -> bool:
         """
         Greater than operator. Parrots __cmp__()
         :param other: Interval or point
@@ -219,7 +234,7 @@ class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
         """
         return self.__cmp__(other) > 0
 
-    def _raise_if_null(self, other):
+    def _raise_if_null(self, other: 'Interval[_C, _A]'):
         """
         :raises ValueError: if either self or other is a null Interval
         """
@@ -228,7 +243,7 @@ class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
         if hasattr(other, 'is_null') and other.is_null():
             raise ValueError("Cannot compare null Intervals!")
 
-    def lt(self, other):
+    def lt(self, other: 'Interval[_C, _A]') -> bool:
         """
         Strictly less than. Returns True if no part of this Interval
         extends higher than or into other.
@@ -240,7 +255,7 @@ class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
         self._raise_if_null(other)
         return self.end <= getattr(other, 'begin', other)
 
-    def le(self, other):
+    def le(self, other: 'Interval[_C, _A]') -> bool:
         """
         Less than or overlaps. Returns True if no part of this Interval
         extends higher than other.
@@ -252,7 +267,7 @@ class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
         self._raise_if_null(other)
         return self.end <= getattr(other, 'end', other)
 
-    def gt(self, other):
+    def gt(self, other: 'Interval[_C, _A]') -> bool:
         """
         Strictly greater than. Returns True if no part of this Interval
         extends lower than or into other.
@@ -267,7 +282,7 @@ class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
         else:
             return self.begin > other
 
-    def ge(self, other):
+    def ge(self, other: 'Interval[_C, _A]') -> bool:
         """
         Greater than or overlaps. Returns True if no part of this Interval
         extends lower than other.
@@ -279,7 +294,7 @@ class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
         self._raise_if_null(other)
         return self.begin >= getattr(other, 'begin', other)
 
-    def _get_fields(self):
+    def _get_fields(self) -> Tuple[_C, _C, _A]:
         """
         Used by str, unicode, repr and __reduce__.
 
@@ -290,9 +305,9 @@ class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
         if self.data is not None:
             return self.begin, self.end, self.data
         else:
-            return self.begin, self.end
+            return self.begin, self.end  # type: ignore
     
-    def __repr__(self):
+    def __repr__(self) -> str:
         """
         Executable string representation of this Interval.
         :return: string representation
@@ -311,7 +326,7 @@ class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
 
     __str__ = __repr__
 
-    def copy(self):
+    def copy(self) -> 'Interval[_C, _A]':
         """
         Shallow copy.
         :return: copy of self
@@ -319,7 +334,7 @@ class Interval(namedtuple('IntervalBase', ['begin', 'end', 'data'])):
         """
         return Interval(self.begin, self.end, self.data)
     
-    def __reduce__(self):
+    def __reduce__(self) -> Tuple[type, Tuple[_C, _C, _A]]:
         """
         For pickle-ing.
         :return: pickle data
